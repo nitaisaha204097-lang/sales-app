@@ -936,12 +936,33 @@ function saveMemoCard() {
   if (!cart.length) { alert('কার্টে পণ্য যোগ করুন।'); return; }
   if (!selectedCustomer) { alert('গ্রাহক নির্বাচন করুন।'); return; }
   var text = getMemoText();
-  var blob = new Blob([text], {type:'text/plain;charset=utf-8'});
-  var url  = URL.createObjectURL(blob);
-  var a    = document.createElement('a');
-  a.href = url; a.download = 'invoice-'+Date.now()+'.txt';
-  document.body.appendChild(a); a.click();
-  document.body.removeChild(a); URL.revokeObjectURL(url);
+  // Android WebView এ canvas দিয়ে ছবি বানাই
+  var canvas = document.createElement('canvas');
+  var lines = text.split('\n');
+  var fontSize = 14;
+  var lineH = 20;
+  var pad = 20;
+  canvas.width = 380;
+  canvas.height = lines.length * lineH + pad * 2;
+  var ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#111111';
+  ctx.font = fontSize + 'px monospace';
+  lines.forEach(function(line, i) {
+    ctx.fillText(line, pad, pad + (i + 1) * lineH);
+  });
+  var base64 = canvas.toDataURL('image/png');
+  var fileName = 'invoice-' + Date.now();
+  if (typeof Android !== 'undefined' && Android.saveImageToGallery) {
+    Android.saveImageToGallery(base64, fileName);
+  } else {
+    // ব্রাউজারে fallback — ডাউনলোড
+    var a = document.createElement('a');
+    a.href = base64; a.download = fileName + '.png';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+  }
 }
 
 function smsMemo() {
@@ -949,13 +970,15 @@ function smsMemo() {
   if (!selectedCustomer || !selectedCustomer.phone) { alert('গ্রাহক ও মোবাইল নম্বর নির্বাচন করুন।'); return; }
   var ok = confirm('SMS পাঠাবেন?\n\nপ্রাপক: '+selectedCustomer.name+'\nনম্বর: '+selectedCustomer.phone+'\n\n\u26a0\ufe0f সতর্কতা: SMS চার্জ প্রযোজ্য।');
   if (!ok) return;
-  window.location.href = 'sms:'+selectedCustomer.phone+'?body='+encodeURIComponent(getMemoText());
+  var smsUrl = 'sms:'+selectedCustomer.phone+'?body='+encodeURIComponent(getMemoText());
+  window.location.href = smsUrl;
 }
 
 function waShare() {
   if (!cart.length) { alert('কার্টে পণ্য যোগ করুন।'); return; }
   if (!selectedCustomer) { alert('গ্রাহক নির্বাচন করুন।'); return; }
-  window.open('https://wa.me/?text='+encodeURIComponent(getMemoText()), '_blank');
+  var waUrl = 'https://wa.me/?text='+encodeURIComponent(getMemoText());
+  window.location.href = waUrl;
 }
 
 // ═══════════ INVOICE HISTORY ═══════════
@@ -1048,17 +1071,34 @@ function getInvText(sid){
 }
 function downloadInv(sid) {
   var text = getInvText(sid); if (!text) return;
-  var blob = new Blob([text], {type:'text/plain;charset=utf-8'});
-  var url  = URL.createObjectURL(blob);
-  var a    = document.createElement('a');
-  a.href = url; a.download = 'invoice-'+(sid.slice(-6))+'.txt';
-  document.body.appendChild(a); a.click();
-  document.body.removeChild(a); URL.revokeObjectURL(url);
+  var canvas = document.createElement('canvas');
+  var lines = text.split('\n');
+  var lineH = 20, pad = 20;
+  canvas.width = 380;
+  canvas.height = lines.length * lineH + pad * 2;
+  var ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#111111';
+  ctx.font = '14px monospace';
+  lines.forEach(function(line, i) {
+    ctx.fillText(line, pad, pad + (i + 1) * lineH);
+  });
+  var base64 = canvas.toDataURL('image/png');
+  var fileName = 'invoice-' + (sid.slice(-6));
+  if (typeof Android !== 'undefined' && Android.saveImageToGallery) {
+    Android.saveImageToGallery(base64, fileName);
+  } else {
+    var a = document.createElement('a');
+    a.href = base64; a.download = fileName + '.png';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+  }
 }
 
 function shareInvWa(sid) {
   var text = getInvText(sid); if (!text) return;
-  window.open('https://wa.me/?text='+encodeURIComponent(text), '_blank');
+  window.location.href = 'https://wa.me/?text='+encodeURIComponent(text);
 }
 
 function smsInv(sid){
@@ -1066,7 +1106,7 @@ function smsInv(sid){
   if(!s.customerPhone){alert('মোবাইল নম্বর নেই।');return;}
   var ok=confirm('SMS পাঠাবেন?\nপ্রাপক: '+(s.customerName||'')+' | '+s.customerPhone+'\n⚠ SMS চার্জ প্রযোজ্য।');
   if(!ok) return;
-  window.location.href='sms:'+s.customerPhone+'?body='+encodeURIComponent(getInvText(sid));
+  window.location.href = 'sms:' + s.customerPhone + '?body=' + encodeURIComponent(getInvText(sid));
 }
 
 // ═══════════ CUSTOMERS ═══════════
@@ -1142,7 +1182,7 @@ function smsDueCust(id){
     var S=String.fromCharCode(9472).repeat(23);
     return 'বকেয়া বিজ্ঞপ্তি\nতারিখ: '+d+'\nকাস্টমার: '+c.name+'\nমোবাইল: '+c.phone+'\n'+S+'\nমোট বকেয়া: ৳ '+Number(c.due).toFixed(2)+'\n'+S+'\nঅনুগ্রহ করে পরিশোধ করুন।\nধন্যবাদ!';
   })();
-  window.location.href='sms:'+c.phone+'?body='+encodeURIComponent(msg);
+  window.location.href = 'sms:' + c.phone + '?body=' + encodeURIComponent(msg);
 }
 
 // ═══════════ INVENTORY ═══════════
